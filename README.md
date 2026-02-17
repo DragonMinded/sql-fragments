@@ -58,7 +58,10 @@ Then, we have a slightly more complex query.
 from sqlfragments import statement
 
 def insert(name: str) -> None:
-    sql, params = statement("INSERT INTO table ('name') VALUES (%value)", name).to_sqlalchemy()
+    sql, params = statement(
+        "INSERT INTO table ('name') VALUES (%value)",
+        name,
+    ).to_sqlalchemy()
     session.execute(text(sql), params)
 ```
 
@@ -70,7 +73,10 @@ Alternatively, you can use named specifiers.
 from sqlfragments import statement
 
 def insert(name: str) -> None:
-    sql, params = statement("INSERT INTO table ('name') VALUES (%value:val)", val=name).to_sqlalchemy()
+    sql, params = statement(
+        "INSERT INTO table ('name') VALUES (%value:val)",
+        val=name,
+    ).to_sqlalchemy()
     session.execute(text(sql), params)
 ```
 
