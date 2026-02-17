@@ -1,9 +1,11 @@
 from ._fragments import (
     FragmentException,
-    InvalidFragment,
+    ParseException,
     InvalidSpecifier,
     InvalidName,
+    ArgumentException,
     MissingArgument,
+    InvalidArgument,
     Fragment,
     fragment,
 )
@@ -11,10 +13,12 @@ from ._fragments import (
 
 __all__ = [
     "FragmentException",
-    "InvalidFragment",
+    "ParseException",
     "InvalidSpecifier",
     "InvalidName",
+    "ArgumentException",
     "MissingArgument",
+    "InvalidArgument",
     "Fragment",
     "fragment",
 ]
