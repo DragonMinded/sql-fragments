@@ -436,7 +436,11 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
     params: Dict[str, object] = {}
     sql: str = ""
 
-    def _paramname(specifier: Specifier) -> str:
+    def _paramname(specifier: Specifier, val: object) -> str:
+        for pn, pv in params.items():
+            if pv is val:
+                return pn
+
         return f"{str(specifier)[1]}{len(params) + start}"
 
     for part in parts:
@@ -464,7 +468,7 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
 
             elif specifier == Specifier.VALUE:
                 # Just use sqlalchemy's support for named parameters.
-                param = _paramname(specifier)
+                param = _paramname(specifier, value)
                 sql += f":{param}"
                 params[param] = value
 
@@ -478,7 +482,7 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         sqlstrs: List[str] = []
 
                         for v in value:
-                            param = _paramname(specifier)
+                            param = _paramname(specifier, v)
                             sqlstrs.append(f":{param}")
                             params[param] = v
 
@@ -494,7 +498,7 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         sql += "NULL"
                     else:
                         # Just use sqlalchemy's support for named parameters.
-                        param = _paramname(specifier)
+                        param = _paramname(specifier, value)
                         sql += f":{param}"
                         params[param] = value
 
@@ -502,7 +506,7 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                     raise FragmentException("Logic error, expected list type for {specifier}!")
 
             elif specifier in {Specifier.FRAGMENT, Specifier.STATEMENT}:
-                if isinstance(value, Fragment):
+                if isinstance(value, (Fragment, Statement)):
                     # Convert the fragment itself.
                     subsql, subparams = _to_sqlalchemy(value._parts, len(params))
                     sql += subsql
@@ -515,7 +519,8 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         sql += ";"
 
                 else:
-                    raise FragmentException("Logic error, expected Fragment type for {specifier}!")
+                    ftype = "Fragment" if specifier == Specifier.FRAGMENT else "Statement"
+                    raise FragmentException(f"Logic error, expected {ftype} type for {specifier}, got {type(value)}!")
 
             elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST, Specifier.AND_LIST, Specifier.OR_LIST}:
                 if isinstance(value, list):
@@ -523,16 +528,16 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
 
                     # First get all the parameters and the raw sql pieces.
                     for chunk in value:
-                        if isinstance(value, Fragment):
+                        if isinstance(chunk, (Fragment, Statement)):
                             # Convert the fragment itself.
-                            subsql, subparams = _to_sqlalchemy(value._parts, len(params))
+                            subsql, subparams = _to_sqlalchemy(chunk._parts, len(params))
 
                             if specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
                                 # Make sure that sub-filters are evaluated in correct logical order.
                                 sqls.append(f"({subsql})")
                             elif specifier == Specifier.STATEMENT_LIST:
                                 # Make sure all entries, including the last, has a semicolon on it.
-                                sqls.append("{subsql};")
+                                sqls.append(f"{subsql};")
                             else:
                                 sqls.append(subsql)
 
@@ -542,7 +547,8 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                             }
 
                         else:
-                            raise FragmentException("Logic error, expected Fragment type for {specifier} item!")
+                            ftype = "Statement" if specifier == Specifier.STATEMENT_LIST else "Fragment"
+                            raise FragmentException(f"Logic error, expected {ftype} type for {specifier}, got {type(chunk)}!")
 
                     # Now, stick 'em all together and put the raw text in the output.
                     if sqls:
@@ -557,14 +563,14 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         if specifier == Specifier.AND_LIST:
                             # A list of no and statements should mean logically that all things
                             # should be let through.
-                            sql += " TRUE "
+                            sql += "TRUE"
                         elif specifier == Specifier.OR_LIST:
-                            sql += " FALSE "
+                            sql += "FALSE"
 
                 else:
                     raise FragmentException("Logic error, expected list type for {specifier}!")
 
-    return (sql, params)
+    return (sql.strip(), params)
 
 
 class Fragment:
@@ -573,11 +579,8 @@ class Fragment:
 
     def __repr__(self) -> str:
         # Just spit out the sqlalchemy raw SQL string for now.
-        sql, _ = self.to_sqlalchemy()
+        sql, _ = _to_sqlalchemy(self._parts, 0)
         return sql
-
-    def to_sqlalchemy(self) -> Tuple[str, Dict[str, object]]:
-        return _to_sqlalchemy(self._parts, 0)
 
 
 class Statement:
@@ -586,7 +589,7 @@ class Statement:
 
     def __repr__(self) -> str:
         # Just spit out the sqlalchemy raw SQL string for now.
-        sql, _ = self.to_sqlalchemy()
+        sql, _ = _to_sqlalchemy(self._parts, 0)
         return sql
 
     def to_sqlalchemy(self) -> Tuple[str, Dict[str, object]]:
