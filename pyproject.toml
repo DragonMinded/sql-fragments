@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sql-fragments"
-version = "0.0.1"
+version = "0.0.2"
 requires-python = ">=3.11"
 authors = [
     {name = "Jennifer Taylor", email = "dragonminded@dragonminded.com"},
@@ -22,3 +22,6 @@ Homepage = "https://github.com/DragonMinded/sql-fragments"
 
 [tool.setuptools]
 packages = ["sqlfragments"]
+
+[tool.setuptools.package-data]
+"pkgname" = ["py.typed"]
