@@ -22,7 +22,11 @@ class TestTokenize:
 
         # Middle.
         tokens = _tokenize("SOME SQL %value SOME SQL")
-        assert tokens == [Token.raw("SOME SQL ", 0), Token.specifier("%value", 9), Token.raw(" SOME SQL", 15)]
+        assert tokens == [
+            Token.raw("SOME SQL ", 0),
+            Token.specifier("%value", 9),
+            Token.raw(" SOME SQL", 15),
+        ]
 
         # End.
         tokens = _tokenize("SOME SQL %value")
@@ -42,7 +46,11 @@ class TestTokenize:
 
         # Inside valid syntax.
         tokens = _tokenize("(%value)")
-        assert tokens == [Token.raw("(", 0), Token.specifier("%value", 1), Token.raw(")", 7)]
+        assert tokens == [
+            Token.raw("(", 0),
+            Token.specifier("%value", 1),
+            Token.raw(")", 7),
+        ]
 
     def test_named_specifier(self) -> None:
         # Beginning.
@@ -51,7 +59,11 @@ class TestTokenize:
 
         # Middle.
         tokens = _tokenize("SOME SQL %value:name SOME SQL")
-        assert tokens == [Token.raw("SOME SQL ", 0), Token.specifier("%value:name", 9), Token.raw(" SOME SQL", 20)]
+        assert tokens == [
+            Token.raw("SOME SQL ", 0),
+            Token.specifier("%value:name", 9),
+            Token.raw(" SOME SQL", 20),
+        ]
 
         # End.
         tokens = _tokenize("SOME SQL %value:name")
@@ -67,19 +79,34 @@ class TestTokenize:
 
         # Directly adjacent.
         tokens = _tokenize("%value:name%value:another")
-        assert tokens == [Token.specifier("%value:name", 0), Token.specifier("%value:another", 11)]
+        assert tokens == [
+            Token.specifier("%value:name", 0),
+            Token.specifier("%value:another", 11),
+        ]
 
         # Inside valid syntax.
         tokens = _tokenize("(%value:name)")
-        assert tokens == [Token.raw("(", 0), Token.specifier("%value:name", 1), Token.raw(")", 12)]
+        assert tokens == [
+            Token.raw("(", 0),
+            Token.specifier("%value:name", 1),
+            Token.raw(")", 12),
+        ]
 
     def test_invalid_specifier(self) -> None:
         # Not one of our valid specifiers.
-        with pytest.raises(InvalidSpecifier, match="Unexpected specifier '%nonsense' encountered in position 1 of fragment!"):
+        with pytest.raises(
+            InvalidSpecifier,
+            match="Unexpected specifier '%nonsense' encountered in position 1 of fragment!",
+        ):
             _tokenize("%nonsense")
 
-        with pytest.raises(InvalidName, match="Invalid name encountered in position 8 of fragment!"):
+        with pytest.raises(
+            InvalidName, match="Invalid name encountered in position 8 of fragment!"
+        ):
             _tokenize("%value:")
 
-        with pytest.raises(InvalidName, match="Invalid name '37' encountered in position 8 of fragment!"):
+        with pytest.raises(
+            InvalidName,
+            match="Invalid name '37' encountered in position 8 of fragment!",
+        ):
             _tokenize("%value:37")

@@ -69,7 +69,9 @@ class TokenType(Enum):
 
 
 class Token:
-    def __init__(self, ttype: TokenType, idx: int, value: str, name: Optional[str]) -> None:
+    def __init__(
+        self, ttype: TokenType, idx: int, value: str, name: Optional[str]
+    ) -> None:
         self.type = ttype
         self.idx = idx
         self.value = value
@@ -80,10 +82,10 @@ class Token:
             return False
 
         return (
-            other.type == self.type and
-            other.idx == self.idx and
-            other.value == self.value and
-            other.name == self.name
+            other.type == self.type
+            and other.idx == self.idx
+            and other.value == self.value
+            and other.name == self.name
         )
 
     def __repr__(self) -> str:
@@ -96,15 +98,17 @@ class Token:
     @staticmethod
     def specifier(specifier: str, idx: int) -> "Token":
         # Split to specifier and name if needed.
-        if ':' in specifier:
-            specifier, name = specifier.split(':', 1)
+        if ":" in specifier:
+            specifier, name = specifier.split(":", 1)
         else:
             name = None
 
         # Double check that the specifier is valid.
         specifier = specifier.lower()
         if specifier not in Specifier:
-            raise InvalidSpecifier(f"Unexpected specifier {specifier!r} encountered in position {idx + 1} of fragment!")
+            raise InvalidSpecifier(
+                f"Unexpected specifier {specifier!r} encountered in position {idx + 1} of fragment!"
+            )
 
         # Double check that the name is valid.
         if name is not None:
@@ -112,10 +116,14 @@ class Token:
             nidx = idx + len(specifier) + 1
 
             if not name:
-                raise InvalidName(f"Invalid name encountered in position {nidx + 1} of fragment!")
+                raise InvalidName(
+                    f"Invalid name encountered in position {nidx + 1} of fragment!"
+                )
 
             if not name[0].isalpha():
-                raise InvalidName(f"Invalid name {name!r} encountered in position {nidx + 1} of fragment!")
+                raise InvalidName(
+                    f"Invalid name {name!r} encountered in position {nidx + 1} of fragment!"
+                )
 
         return Token(TokenType.SPECIFIER, idx, specifier, name)
 
@@ -138,7 +146,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
         if state == TokenState.STRING:
             # Check if we're starting a format specifier or continuing to accumulate
             # characters from a string.
-            if c == '%':
+            if c == "%":
                 # Only add a previous token if the accumulator has anything in it.
                 if accum:
                     tokens.append(Token.raw(accum, idx - len(accum)))
@@ -152,12 +160,12 @@ def _tokenize(sql: LiteralString) -> List[Token]:
 
         elif state == TokenState.SPECIFIER_VALUE:
             # Check if we've encountered an optional name in the format of %specifier:name
-            if c == ':':
+            if c == ":":
                 # This is a continuation of the current token, but we've moved on
                 # to accumulating the specifier name itself.
                 accum += c
                 state = TokenState.SPECIFIER_NAME
-            elif c == '%':
+            elif c == "%":
                 # This is either an escaped percent or the start of a new specifier.
                 if accum == "%":
                     # This is just an escaped character. It already equals what we want it to.
@@ -178,9 +186,11 @@ def _tokenize(sql: LiteralString) -> List[Token]:
 
         elif state == TokenState.SPECIFIER_NAME:
             # We should not encounter a second colon, so at this point we know this is a problem.
-            if c == ':':
-                raise ParseException(f"Unexpected colon encountered in position {idx + 1} of fragment!")
-            elif c == '%':
+            if c == ":":
+                raise ParseException(
+                    f"Unexpected colon encountered in position {idx + 1} of fragment!"
+                )
+            elif c == "%":
                 # We know this is the start of a new specifier, since we only get to this state if
                 # we've encountered a ":" in the specifier.
                 tokens.append(Token.specifier(accum, idx - len(accum)))
@@ -202,7 +212,9 @@ def _tokenize(sql: LiteralString) -> List[Token]:
         elif state in {TokenState.SPECIFIER_VALUE, TokenState.SPECIFIER_NAME}:
             tokens.append(Token.specifier(accum, len(sql) - len(accum)))
         else:
-            raise FragmentException("Logic error, encountered unexpected token in tokenizer!")
+            raise FragmentException(
+                "Logic error, encountered unexpected token in tokenizer!"
+            )
 
     return _combine(tokens)
 
@@ -215,11 +227,20 @@ def _combine(tokens: List[Token]) -> List[Token]:
             # Just add this.
             combined.append(token)
 
-        elif combined and token.type == TokenType.RAW and combined[-1].type == TokenType.RAW:
+        elif (
+            combined
+            and token.type == TokenType.RAW
+            and combined[-1].type == TokenType.RAW
+        ):
             # Combine the previous and current token together as one raw token.
             combined = [
                 *combined[:-1],
-                Token(TokenType.RAW, combined[-1].idx, combined[-1].value + token.value, None),
+                Token(
+                    TokenType.RAW,
+                    combined[-1].idx,
+                    combined[-1].value + token.value,
+                    None,
+                ),
             ]
 
         else:
@@ -259,7 +280,9 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
             if name is None:
                 if not args:
                     # There is no argument for this.
-                    raise MissingArgument(f"{spec} in position {pos + 1} is missing positional argument.")
+                    raise MissingArgument(
+                        f"{spec} in position {pos + 1} is missing positional argument."
+                    )
 
                 # Grab the first argument, consuming it.
                 arg = args[0]
@@ -268,7 +291,9 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
             else:
                 if name not in kwargs:
                     # There is no argument for this.
-                    raise MissingArgument(f"{spec} in position {pos + 1} is missing named argument {name!r}.")
+                    raise MissingArgument(
+                        f"{spec} in position {pos + 1} is missing named argument {name!r}."
+                    )
 
                 # Grab the argument, do not consume it.
                 arg = kwargs[name]
@@ -282,43 +307,63 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                 # Ensure valid identifiers, very strict because this is our own sanitization so we
                 # simply do not allow any shenanigans.
                 actual = str(arg) if arg is not None else None
-                if actual is None or any(a not in VALID_IDENTIFIER_CHARS for a in actual):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a string-like with valid identifier characters.")
+                if actual is None or any(
+                    a not in VALID_IDENTIFIER_CHARS for a in actual
+                ):
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a string-like with valid identifier characters."
+                    )
 
             elif specifier == Specifier.COLUMN_LIST:
                 # Makes no sense for a column list to be anything but an ordered sequence type.
                 if not isinstance(arg, Sequence):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of valid identifiers.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a sequence of valid identifiers."
+                    )
 
                 actual = [str(a) if a is not None else None for a in arg]
                 if not actual:
-                    raise InvalidArgument(f"{spec} in position {pos + 1} expected to be a non-empty sequence.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} expected to be a non-empty sequence."
+                    )
                 if any(a is None for a in actual):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries expected to be string-like.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} individual entries expected to be string-like."
+                    )
 
                 for val in actual:
                     # Ensure valid identifiers, very strict because this is our own sanitization so we
                     # simply do not allow any shenanigans.
                     if val is None or any(a not in VALID_IDENTIFIER_CHARS for a in val):
                         raise InvalidArgument(
-                            f"{spec} in position {pos + 1} individual entries require a string-like with valid " +
-                            "identifier characters."
+                            f"{spec} in position {pos + 1} individual entries require a string-like with valid "
+                            + "identifier characters."
                         )
 
             elif specifier == Specifier.VALUE_LIST:
                 # Makes no sense for a value list to be anything but an ordered sequence type.
                 if not isinstance(arg, Sequence):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of values.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a sequence of values."
+                    )
 
                 actual = [a for a in arg]
                 if not actual:
-                    raise InvalidArgument(f"{spec} in position {pos + 1} expected to be a non-empty sequence.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} expected to be a non-empty sequence."
+                    )
 
             elif specifier == Specifier.IN_LIST:
                 # In list is often used for ID checks, so it can be empty, and in any order, but
                 # it makes no sense for a value to be None.
-                if not isinstance(arg, Iterable) or isinstance(arg, str) or isinstance(arg, bytes):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires an iterable of values.")
+                if (
+                    not isinstance(arg, Iterable)
+                    or isinstance(arg, str)
+                    or isinstance(arg, bytes)
+                ):
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires an iterable of values."
+                    )
 
                 actual = [a for a in arg]
                 if any(a is None for a in actual):
@@ -332,7 +377,9 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                     continue
 
                 if not isinstance(arg, Fragment):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a Fragment.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a Fragment."
+                    )
 
                 actual = arg
 
@@ -342,36 +389,50 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                     continue
 
                 if not isinstance(arg, Statement):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a Statement.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a Statement."
+                    )
 
                 actual = arg
 
             elif specifier == Specifier.FRAGMENT_LIST:
                 # These are ordered, so must be a sequence. They can contain either Fragments or None to filter out.
                 if not isinstance(arg, Sequence):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of Fragment.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a sequence of Fragment."
+                    )
 
                 actual = [a for a in arg if a is not None]
                 if any(not isinstance(a, Fragment) for a in actual):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Fragment.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} individual entries require a Fragment."
+                    )
 
             elif specifier == Specifier.STATEMENT_LIST:
                 # These are ordered, so must be a sequence. They can contain either Statements or None to filter out.
                 if not isinstance(arg, Sequence):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of Statement.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires a sequence of Statement."
+                    )
 
                 actual = [a for a in arg if a is not None]
                 if any(not isinstance(a, Statement) for a in actual):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Statement.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} individual entries require a Statement."
+                    )
 
             elif specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
                 # These are unordered, so can be any iterable. They can contain either Fragments or None to filter out.
                 if not isinstance(arg, Iterable):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} requires an iterable of Fragment.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} requires an iterable of Fragment."
+                    )
 
                 actual = [a for a in arg if a is not None]
                 if any(not isinstance(a, Fragment) for a in actual):
-                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Fragment.")
+                    raise InvalidArgument(
+                        f"{spec} in position {pos + 1} individual entries require a Fragment."
+                    )
 
             else:
                 # No validation needed.
@@ -380,23 +441,22 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
             pieces.append(Parameter(specifier, actual))
 
         else:
-            raise FragmentException(f"Logic error, encountered unrecognized token in position {token.idx} during fragment parsing!")
+            raise FragmentException(
+                f"Logic error, encountered unrecognized token in position {token.idx} during fragment parsing!"
+            )
 
     return Fragment(pieces)
 
 
 class Piece(ABC):
     @abstractmethod
-    def raw(self) -> Optional[str]:
-        ...
+    def raw(self) -> Optional[str]: ...
 
     @abstractmethod
-    def specifier(self) -> Optional[Specifier]:
-        ...
+    def specifier(self) -> Optional[Specifier]: ...
 
     @abstractmethod
-    def value(self) -> object:
-        ...
+    def value(self) -> object: ...
 
 
 class String(Piece):
@@ -464,7 +524,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                 if isinstance(value, list):
                     sql += ",".join(f"`{v}`" for v in value)
                 else:
-                    raise FragmentException(f"Logic error, expected list type for {specifier}!")
+                    raise FragmentException(
+                        f"Logic error, expected list type for {specifier}!"
+                    )
 
             elif specifier == Specifier.VALUE:
                 # Just use sqlalchemy's support for named parameters.
@@ -475,7 +537,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
             elif specifier == Specifier.VALUE_LIST:
                 if isinstance(value, list):
                     if not value:
-                        raise FragmentException(f"Logic error, expected non-zero list length for {specifier}!")
+                        raise FragmentException(
+                            f"Logic error, expected non-zero list length for {specifier}!"
+                        )
                     else:
                         # Just use sqlalchemy's support for named parameters. Manually unroll, however,
                         # because we want to match column list.
@@ -489,7 +553,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         sql += ",".join(sqlstrs)
 
                 else:
-                    raise FragmentException("Logic error, expected list type for {specifier}!")
+                    raise FragmentException(
+                        "Logic error, expected list type for {specifier}!"
+                    )
 
             elif specifier == Specifier.IN_LIST:
                 if isinstance(value, list):
@@ -503,7 +569,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         params[param] = value
 
                 else:
-                    raise FragmentException("Logic error, expected list type for {specifier}!")
+                    raise FragmentException(
+                        "Logic error, expected list type for {specifier}!"
+                    )
 
             elif specifier in {Specifier.FRAGMENT, Specifier.STATEMENT}:
                 if isinstance(value, (Fragment, Statement)):
@@ -519,10 +587,19 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         sql += ";"
 
                 else:
-                    ftype = "Fragment" if specifier == Specifier.FRAGMENT else "Statement"
-                    raise FragmentException(f"Logic error, expected {ftype} type for {specifier}, got {type(value)}!")
+                    ftype = (
+                        "Fragment" if specifier == Specifier.FRAGMENT else "Statement"
+                    )
+                    raise FragmentException(
+                        f"Logic error, expected {ftype} type for {specifier}, got {type(value)}!"
+                    )
 
-            elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST, Specifier.AND_LIST, Specifier.OR_LIST}:
+            elif specifier in {
+                Specifier.FRAGMENT_LIST,
+                Specifier.STATEMENT_LIST,
+                Specifier.AND_LIST,
+                Specifier.OR_LIST,
+            }:
                 if isinstance(value, list):
                     sqls: List[str] = []
 
@@ -530,7 +607,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                     for chunk in value:
                         if isinstance(chunk, (Fragment, Statement)):
                             # Convert the fragment itself.
-                            subsql, subparams = _to_sqlalchemy(chunk._parts, len(params))
+                            subsql, subparams = _to_sqlalchemy(
+                                chunk._parts, len(params)
+                            )
 
                             if specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
                                 # Make sure that sub-filters are evaluated in correct logical order.
@@ -547,8 +626,14 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                             }
 
                         else:
-                            ftype = "Statement" if specifier == Specifier.STATEMENT_LIST else "Fragment"
-                            raise FragmentException(f"Logic error, expected {ftype} type for {specifier}, got {type(chunk)}!")
+                            ftype = (
+                                "Statement"
+                                if specifier == Specifier.STATEMENT_LIST
+                                else "Fragment"
+                            )
+                            raise FragmentException(
+                                f"Logic error, expected {ftype} type for {specifier}, got {type(chunk)}!"
+                            )
 
                     # Now, stick 'em all together and put the raw text in the output.
                     if sqls:
@@ -568,7 +653,9 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                             sql += "FALSE"
 
                 else:
-                    raise FragmentException("Logic error, expected list type for {specifier}!")
+                    raise FragmentException(
+                        "Logic error, expected list type for {specifier}!"
+                    )
 
     return (sql.strip(), params)
 

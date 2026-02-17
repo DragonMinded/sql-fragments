@@ -138,7 +138,10 @@ class TestParams:
 
     def test_statement(self) -> None:
         # Statement type can be a fragment itself, or None.
-        statement("SELECT * FROM table; %statement", statement("SELECT * FROM table WHERE x = 5"))
+        statement(
+            "SELECT * FROM table; %statement",
+            statement("SELECT * FROM table WHERE x = 5"),
+        )
         statement("SELECT * FROM table; %statement", None)
 
         # Statement type cannot be any other type, including raw strings, since we can't
@@ -152,7 +155,10 @@ class TestParams:
     def test_fragmentlist(self) -> None:
         # Fragment list type can be a list of fragments or None. They can't be iterables
         # because fragments and statements often matter in what order you execute them.
-        statement("SELECT * FROM table %fragmentlist", [fragment("WHERE x = 5"), fragment(" AND y = 10")])
+        statement(
+            "SELECT * FROM table %fragmentlist",
+            [fragment("WHERE x = 5"), fragment(" AND y = 10")],
+        )
         statement("SELECT * FROM table %fragmentlist", [None])
         statement("SELECT * FROM table %fragmentlist", [])
 
@@ -174,12 +180,18 @@ class TestParams:
             InvalidArgument,
             match="%fragmentlist in position 21 requires a sequence of Fragment.",
         ):
-            statement("SELECT * FROM table %fragmentlist", {fragment("WHERE x = 5"), fragment(" AND y = 10")})
+            statement(
+                "SELECT * FROM table %fragmentlist",
+                {fragment("WHERE x = 5"), fragment(" AND y = 10")},
+            )
 
     def test_statementlist(self) -> None:
         # Statement list type can be a list of fragments or None. They can't be iterables
         # because fragments and statements often matter in what order you execute them.
-        statement("SELECT * FROM table; %statementlist", [statement("SELECT id FROM table"), statement("SELECT val FROM table")])
+        statement(
+            "SELECT * FROM table; %statementlist",
+            [statement("SELECT id FROM table"), statement("SELECT val FROM table")],
+        )
         statement("SELECT * FROM table; %statementlist", [None])
         statement("SELECT * FROM table; %statementlist", [])
 
@@ -201,7 +213,10 @@ class TestParams:
             InvalidArgument,
             match="%statementlist in position 21 requires a sequence of Statement.",
         ):
-            statement("SELECT * FROM table %statementlist", {statement("WHERE x = 5"), statement(" AND y = 10")})
+            statement(
+                "SELECT * FROM table %statementlist",
+                {statement("WHERE x = 5"), statement(" AND y = 10")},
+            )
 
     def test_inlist(self) -> None:
         # In list allows any iterable of any values, including an empty list, but does not allow
@@ -238,8 +253,14 @@ class TestParams:
 
     def test_andlist(self) -> None:
         # And list type can be an iterable of fragments or None.
-        statement("SELECT * FROM table WHERE %andlist", [fragment("x = 5"), fragment("y = 10")])
-        statement("SELECT * FROM table WHERE %andlist", {fragment("x = 5"), fragment("y = 10")})
+        statement(
+            "SELECT * FROM table WHERE %andlist",
+            [fragment("x = 5"), fragment("y = 10")],
+        )
+        statement(
+            "SELECT * FROM table WHERE %andlist",
+            {fragment("x = 5"), fragment("y = 10")},
+        )
         statement("SELECT * FROM table WHERE %andlist", [None])
         statement("SELECT * FROM table WHERE %andlist", [])
 
@@ -265,8 +286,12 @@ class TestParams:
 
     def test_orlist(self) -> None:
         # Or list type can be an iterable of fragments or None.
-        statement("SELECT * FROM table WHERE %orlist", [fragment("x = 5"), fragment("y = 10")])
-        statement("SELECT * FROM table WHERE %orlist", {fragment("x = 5"), fragment("y = 10")})
+        statement(
+            "SELECT * FROM table WHERE %orlist", [fragment("x = 5"), fragment("y = 10")]
+        )
+        statement(
+            "SELECT * FROM table WHERE %orlist", {fragment("x = 5"), fragment("y = 10")}
+        )
         statement("SELECT * FROM table WHERE %orlist", [None])
         statement("SELECT * FROM table WHERE %orlist", [])
 

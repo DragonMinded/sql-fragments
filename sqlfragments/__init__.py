@@ -12,7 +12,6 @@ from ._fragments import (
     statement,
 )
 
-
 __all__ = [
     "FragmentException",
     "ParseException",
