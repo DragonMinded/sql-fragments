@@ -4,21 +4,21 @@ Originally inspired by a similar library in PHP/Hack, I've used or built a versi
 
 ### API
 
-```
+```python
 def statement(sql: LiteralString, *args: object, **kwargs: object) -> "Statement":
    ...
 ```
 
 Parses a SQL query with optional specifiers, binding those specifiers to the arguments presented. Returns a `Statement` which can be used with the `%statement` or `%statementlist` specifiers in another statement or fragment. The `Statement` class also has a `to_sqlalchemy()` method which returns a tuple of SQLAlchemy-compatible SQL and a dictionary of bind parameters, suitable for passing to SQLAlchemy's `execute()` function.
 
-```
+```python
 def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
    ...
 ```
 
 Parses a fragment of SQL with optional specifiers, binding those specifiers to the arguments presented. Returns a `Fragment` which can be used with the `%fragment`, `%fragmentlist`, `%andlist` or `%orlist` specifiers in another statement or fragment. Fragments and Statements both support the full gamut of format specifiers.
 
-```
+```python
 class FragmentException(Exception):
     ...
 ```
@@ -44,7 +44,7 @@ Base exception type that all exceptions thrown when parsing SQL will originate f
 
 First up, we have a simple statement.
 
-```
+```python
 from sqlfragments import statement
 
 sql, params = statement("SELECT * FROM table").to_sqlalchemy()
@@ -54,7 +54,7 @@ As you might expect, this results in an identical SQL statement being emitted wi
 
 Then, we have a slightly more complex query.
 
-```
+```python
 from sqlfragments import statement
 
 def insert(name: str) -> None:
@@ -69,7 +69,7 @@ This does exactly what it looks like as well. Note that we have a `%value` speci
 
 Alternatively, you can use named specifiers.
 
-```
+```python
 from sqlfragments import statement
 
 def insert(name: str) -> None:
@@ -84,7 +84,7 @@ This doesn't have many clear advantages in the simple example presented. However
 
 Next, we have an example of an optional fragment.
 
-```
+```python
 from sqlfragments import statement
 
 def lookup(
@@ -116,7 +116,7 @@ Note that while this is slightly contrived, it still shows off the power of opti
 
 Finally, we show off an example of building a more complex query from optional filters.
 
-```
+```python
 from sqlfragments import statement
 
 def filter(
