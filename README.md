@@ -1,0 +1,3 @@
+SQL fragments are a way to keep chunks of SQL and any parameterized arguments together when building queries without an ORM. They take advantage of Python's ability to specify a literal string as an argument to ensure that any potential injection is flagged by the type checker. They include logically consistent ways of creating AND and OR filters for data fetching as well as an easy way to optionally provide fragments to a larger SQL statement. They also allow you to keep parameters local to the fragment of SQL that you are building.
+
+Originally inspired by a similar library in PHP/Hack, I've used or built a version of this at the last several jobs I've worked at in various languages.
