@@ -137,7 +137,13 @@ class TokenState(Enum):
     SPECIFIER_NAME = auto()
 
 
+__tokenize_cache: Dict[str, List[Token]] = {}
+
+
 def _tokenize(sql: LiteralString) -> List[Token]:
+    if sql in __tokenize_cache:
+        return __tokenize_cache[sql]
+
     tokens: List[Token] = []
     accum: str = ""
     state: TokenState = TokenState.STRING
@@ -216,7 +222,9 @@ def _tokenize(sql: LiteralString) -> List[Token]:
                 "Logic error, encountered unexpected token in tokenizer!"
             )
 
-    return _combine(tokens)
+    tokens = _combine(tokens)
+    __tokenize_cache[sql] = tokens
+    return tokens
 
 
 def _combine(tokens: List[Token]) -> List[Token]:
