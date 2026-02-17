@@ -275,8 +275,8 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
             if specifier in {Specifier.TABLE, Specifier.COLUMN}:
                 # Ensure valid identifiers, very strict because this is our own sanitization so we
                 # simply do not allow any shenanigans.
-                actual = str(arg)
-                if any(a not in VALID_IDENTIFIER_CHARS for a in actual):
+                actual = str(arg) if arg is not None else None
+                if actual is None or any(a not in VALID_IDENTIFIER_CHARS for a in actual):
                     raise InvalidArgument(f"{spec} in position {pos + 1} requires a string-like with valid identifier characters.")
 
             elif specifier == Specifier.COLUMN_LIST:
@@ -284,14 +284,16 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                 if not isinstance(arg, Sequence):
                     raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of valid identifiers.")
 
-                actual = [str(a) for a in arg]
+                actual = [str(a) if a is not None else None for a in arg]
                 if not actual:
                     raise InvalidArgument(f"{spec} in position {pos + 1} expected to be a non-empty sequence.")
+                if any(a is None for a in actual):
+                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries expected to be string-like.")
 
                 for val in actual:
                     # Ensure valid identifiers, very strict because this is our own sanitization so we
                     # simply do not allow any shenanigans.
-                    if any(a not in VALID_IDENTIFIER_CHARS for a in actual):
+                    if val is None or any(a not in VALID_IDENTIFIER_CHARS for a in val):
                         raise InvalidArgument(
                             f"{spec} in position {pos + 1} individual entries require a string-like with valid " +
                             "identifier characters."
@@ -309,7 +311,7 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
             elif specifier == Specifier.IN_LIST:
                 # In list is often used for ID checks, so it can be empty, and in any order, but
                 # it makes no sense for a value to be None.
-                if not isinstance(arg, Iterable):
+                if not isinstance(arg, Iterable) or isinstance(arg, str) or isinstance(arg, bytes):
                     raise InvalidArgument(f"{spec} in position {pos + 1} requires an iterable of values.")
 
                 actual = [a for a in arg]
@@ -337,7 +339,7 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                 if any(not isinstance(a, Fragment) for a in actual):
                     raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Fragment.")
 
-            elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST}:
+            elif specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
                 # These are unordered, so can be any iterable. They can contain either Fragments or None to filter out.
                 if not isinstance(arg, Iterable):
                     raise InvalidArgument(f"{spec} in position {pos + 1} requires an iterable of Fragment.")
@@ -345,6 +347,10 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                 actual = [a for a in arg if a is not None]
                 if any(not isinstance(a, Fragment) for a in actual):
                     raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Fragment.")
+
+            else:
+                # No validation needed.
+                actual = arg
 
             pieces.append(Parameter(specifier, actual))
 
@@ -449,13 +455,30 @@ class Fragment:
                     sql += f":{param}"
                     params[param] = value
 
-                elif specifier in {Specifier.VALUE_LIST, Specifier.IN_LIST}:
+                elif specifier == Specifier.VALUE_LIST:
                     if isinstance(value, list):
                         if not value:
-                            if specifier == Specifier.IN_LIST:
-                                sql += "NULL"
-                            else:
-                                raise FragmentException(f"Logic error, expected non-zero list length for {specifier}!")
+                            raise FragmentException(f"Logic error, expected non-zero list length for {specifier}!")
+                        else:
+                            # Just use sqlalchemy's support for named parameters. Manually unroll, however,
+                            # because we want to match column list.
+                            sqlstrs: List[str] = []
+
+                            for v in value:
+                                param = _paramname(specifier)
+                                sqlstrs.append(f":{param}")
+                                params[param] = v
+
+                            sql += ",".join(sqlstrs)
+
+                    else:
+                        raise FragmentException("Logic error, expected list type for {specifier}!")
+
+                elif specifier == Specifier.IN_LIST:
+                    if isinstance(value, list):
+                        if not value:
+                            # Logical consistency, ensure we select nothing.
+                            sql += "NULL"
                         else:
                             # Just use sqlalchemy's support for named parameters.
                             param = _paramname(specifier)
