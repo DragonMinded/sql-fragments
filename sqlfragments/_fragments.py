@@ -75,15 +75,26 @@ class Token:
         self.value = value
         self.name = name
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Token):
+            return False
+
+        return (
+            other.type == self.type and
+            other.idx == self.idx and
+            other.value == self.value and
+            other.name == self.name
+        )
+
+    def __repr__(self) -> str:
+        return f"Token(ttype={self.type!r}, idx={self.idx!r}, value={self.value!r}, name={self.name!r})"
+
     @staticmethod
     def raw(value: str, idx: int) -> "Token":
-        return Token(TokenType.RAW, idx - len(value), value, None)
+        return Token(TokenType.RAW, idx, value, None)
 
     @staticmethod
     def specifier(specifier: str, idx: int) -> "Token":
-        # For error printing.
-        pos = idx - len(specifier)
-
         # Split to specifier and name if needed.
         if ':' in specifier:
             specifier, name = specifier.split(':', 1)
@@ -93,20 +104,20 @@ class Token:
         # Double check that the specifier is valid.
         specifier = specifier.lower()
         if specifier not in Specifier:
-            raise InvalidSpecifier(f"Unexpected specifier {specifier!r} encountered in position {pos + 1} of fragment!")
+            raise InvalidSpecifier(f"Unexpected specifier {specifier!r} encountered in position {idx + 1} of fragment!")
 
         # Double check that the name is valid.
         if name is not None:
             # Location of name is past the specifier and colon.
-            npos = pos + len(specifier) + 1
+            nidx = idx + len(specifier) + 1
 
             if not name:
-                raise InvalidName(f"Invalid name encountered in position {npos + 1} of fragment!")
+                raise InvalidName(f"Invalid name encountered in position {nidx + 1} of fragment!")
 
             if not name[0].isalpha():
-                raise InvalidName(f"Invalid name {name!r} encountered in position {npos + 1} of fragment!")
+                raise InvalidName(f"Invalid name {name!r} encountered in position {nidx + 1} of fragment!")
 
-        return Token(TokenType.SPECIFIER, pos, specifier, name)
+        return Token(TokenType.SPECIFIER, idx, specifier, name)
 
 
 class TokenState(Enum):
@@ -130,7 +141,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
             if c == '%':
                 # Only add a previous token if the accumulator has anything in it.
                 if accum:
-                    tokens.append(Token.raw(accum, idx))
+                    tokens.append(Token.raw(accum, idx - len(accum)))
 
                 # This is the beginning of accumulating a specifier value.
                 accum = "%"
@@ -153,7 +164,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
                     state = TokenState.STRING
                 else:
                     # This is a new specifier that is directly adjacent to the current one.
-                    tokens.append(Token.specifier(accum, idx))
+                    tokens.append(Token.specifier(accum, idx - len(accum)))
                     accum = "%"
             elif c.isalnum():
                 # This is a continuation of the specifier.
@@ -161,7 +172,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
             else:
                 # This is most likely a paren, comma, bracket or semicolon, indicating that the
                 # specifier is finished accumulating and we should go back to string accum.
-                tokens.append(Token.raw(accum, idx))
+                tokens.append(Token.specifier(accum, idx - len(accum)))
                 accum = c
                 state = TokenState.STRING
 
@@ -172,7 +183,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
             elif c == '%':
                 # We know this is the start of a new specifier, since we only get to this state if
                 # we've encountered a ":" in the specifier.
-                tokens.append(Token.specifier(accum, idx))
+                tokens.append(Token.specifier(accum, idx - len(accum)))
                 accum = "%"
                 state = TokenState.SPECIFIER_VALUE
             elif c.isalnum():
@@ -181,15 +192,15 @@ def _tokenize(sql: LiteralString) -> List[Token]:
             else:
                 # This is most likely a paren, comma, bracket or semicolon, indicating that the
                 # specifier is finished accumulating and we should go back to string accum.
-                tokens.append(Token.raw(accum, idx))
+                tokens.append(Token.specifier(accum, idx - len(accum)))
                 accum = c
                 state = TokenState.STRING
 
     if accum:
         if state == TokenState.STRING:
-            tokens.append(Token.raw(accum, len(sql)))
+            tokens.append(Token.raw(accum, len(sql) - len(accum)))
         elif state in {TokenState.SPECIFIER_VALUE, TokenState.SPECIFIER_NAME}:
-            tokens.append(Token.specifier(accum, len(sql)))
+            tokens.append(Token.specifier(accum, len(sql) - len(accum)))
         else:
             raise FragmentException("Logic error, encountered unexpected token in tokenizer!")
 
