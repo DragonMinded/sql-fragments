@@ -8,6 +8,8 @@ from ._fragments import (
     InvalidArgument,
     Fragment,
     fragment,
+    Statement,
+    statement,
 )
 
 
@@ -21,4 +23,6 @@ __all__ = [
     "InvalidArgument",
     "Fragment",
     "fragment",
+    "Statement",
+    "statement",
 ]

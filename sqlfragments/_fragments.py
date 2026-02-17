@@ -229,6 +229,12 @@ def _combine(tokens: List[Token]) -> List[Token]:
     return combined
 
 
+def statement(sql: LiteralString, *args: object, **kwargs: object) -> "Statement":
+    # Statements are just fragments but wrapped in a different top-level object for checking purposes.
+    frag = fragment(sql, *args, **kwargs)
+    return Statement(frag._parts)
+
+
 def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
     # First, tokenize the SQL into raw tokens. This is done without arg substitution or converting
     # into pieces so that the tokenization itself can be cached in the future.
@@ -320,7 +326,7 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                         f"{spec} in position {pos + 1} cannot accept None values for individual entries."
                     )
 
-            elif specifier in {Specifier.FRAGMENT, Specifier.STATEMENT}:
+            elif specifier == Specifier.FRAGMENT:
                 # These must either be None or a Fragment. None gets skipped because we simply don't render it out.
                 if arg is None:
                     continue
@@ -330,7 +336,17 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
 
                 actual = arg
 
-            elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST}:
+            elif specifier == Specifier.STATEMENT:
+                # These must either be None or a Statement. None gets skipped because we simply don't render it out.
+                if arg is None:
+                    continue
+
+                if not isinstance(arg, Statement):
+                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a Statement.")
+
+                actual = arg
+
+            elif specifier == Specifier.FRAGMENT_LIST:
                 # These are ordered, so must be a sequence. They can contain either Fragments or None to filter out.
                 if not isinstance(arg, Sequence):
                     raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of Fragment.")
@@ -338,6 +354,15 @@ def fragment(sql: LiteralString, *args: object, **kwargs: object) -> "Fragment":
                 actual = [a for a in arg if a is not None]
                 if any(not isinstance(a, Fragment) for a in actual):
                     raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Fragment.")
+
+            elif specifier == Specifier.STATEMENT_LIST:
+                # These are ordered, so must be a sequence. They can contain either Statements or None to filter out.
+                if not isinstance(arg, Sequence):
+                    raise InvalidArgument(f"{spec} in position {pos + 1} requires a sequence of Statement.")
+
+                actual = [a for a in arg if a is not None]
+                if any(not isinstance(a, Statement) for a in actual):
+                    raise InvalidArgument(f"{spec} in position {pos + 1} individual entries require a Statement.")
 
             elif specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
                 # These are unordered, so can be any iterable. They can contain either Fragments or None to filter out.
@@ -405,6 +430,143 @@ class Parameter(Piece):
         return self._value
 
 
+def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, object]]:
+    # Convert to a tuple that can be passed to sqlalchemy's session execute function
+    # using the text() SQL construct and a dictionary of params.
+    params: Dict[str, object] = {}
+    sql: str = ""
+
+    def _paramname(specifier: Specifier) -> str:
+        return f"{str(specifier)[1]}{len(params) + start}"
+
+    for part in parts:
+        # First, the easy part, just append any raw SQL we have.
+        raw = part.raw()
+        if raw:
+            sql += raw
+
+        # Now, the hard part. Create parameter substitutions, respecting column and table rules.
+        specifier = part.specifier()
+        value = part.value()
+        if specifier:
+            if specifier in {Specifier.TABLE, Specifier.COLUMN}:
+                # Just output it escaped. We already validated the argument to ensure it was
+                # only containing alphanumeric or safe characters.
+                sql += f"`{value}`"
+
+            elif specifier == Specifier.COLUMN_LIST:
+                # Output each escaped. We already verified it was a list and contained alphanumeric
+                # or safe characters only.
+                if isinstance(value, list):
+                    sql += ",".join(f"`{v}`" for v in value)
+                else:
+                    raise FragmentException(f"Logic error, expected list type for {specifier}!")
+
+            elif specifier == Specifier.VALUE:
+                # Just use sqlalchemy's support for named parameters.
+                param = _paramname(specifier)
+                sql += f":{param}"
+                params[param] = value
+
+            elif specifier == Specifier.VALUE_LIST:
+                if isinstance(value, list):
+                    if not value:
+                        raise FragmentException(f"Logic error, expected non-zero list length for {specifier}!")
+                    else:
+                        # Just use sqlalchemy's support for named parameters. Manually unroll, however,
+                        # because we want to match column list.
+                        sqlstrs: List[str] = []
+
+                        for v in value:
+                            param = _paramname(specifier)
+                            sqlstrs.append(f":{param}")
+                            params[param] = v
+
+                        sql += ",".join(sqlstrs)
+
+                else:
+                    raise FragmentException("Logic error, expected list type for {specifier}!")
+
+            elif specifier == Specifier.IN_LIST:
+                if isinstance(value, list):
+                    if not value:
+                        # Logical consistency, ensure we select nothing.
+                        sql += "NULL"
+                    else:
+                        # Just use sqlalchemy's support for named parameters.
+                        param = _paramname(specifier)
+                        sql += f":{param}"
+                        params[param] = value
+
+                else:
+                    raise FragmentException("Logic error, expected list type for {specifier}!")
+
+            elif specifier in {Specifier.FRAGMENT, Specifier.STATEMENT}:
+                if isinstance(value, Fragment):
+                    # Convert the fragment itself.
+                    subsql, subparams = _to_sqlalchemy(value._parts, len(params))
+                    sql += subsql
+                    params = {
+                        **params,
+                        **subparams,
+                    }
+
+                    if specifier == Specifier.STATEMENT:
+                        sql += ";"
+
+                else:
+                    raise FragmentException("Logic error, expected Fragment type for {specifier}!")
+
+            elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST, Specifier.AND_LIST, Specifier.OR_LIST}:
+                if isinstance(value, list):
+                    sqls: List[str] = []
+
+                    # First get all the parameters and the raw sql pieces.
+                    for chunk in value:
+                        if isinstance(value, Fragment):
+                            # Convert the fragment itself.
+                            subsql, subparams = _to_sqlalchemy(value._parts, len(params))
+
+                            if specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
+                                # Make sure that sub-filters are evaluated in correct logical order.
+                                sqls.append(f"({subsql})")
+                            elif specifier == Specifier.STATEMENT_LIST:
+                                # Make sure all entries, including the last, has a semicolon on it.
+                                sqls.append("{subsql};")
+                            else:
+                                sqls.append(subsql)
+
+                            params = {
+                                **params,
+                                **subparams,
+                            }
+
+                        else:
+                            raise FragmentException("Logic error, expected Fragment type for {specifier} item!")
+
+                    # Now, stick 'em all together and put the raw text in the output.
+                    if sqls:
+                        concat = {
+                            Specifier.FRAGMENT_LIST: " ",
+                            Specifier.STATEMENT_LIST: " ",
+                            Specifier.AND_LIST: " AND ",
+                            Specifier.OR_LIST: " OR ",
+                        }[specifier]
+                        sql += concat.join(sqls)
+                    else:
+                        if specifier == Specifier.AND_LIST:
+                            # A list of no and statements should mean logically that all things
+                            # should be let through.
+                            sql += " TRUE "
+                        elif specifier == Specifier.OR_LIST:
+                            sql += " FALSE "
+
+                else:
+                    raise FragmentException("Logic error, expected list type for {specifier}!")
+
+    return (sql, params)
+
+
 class Fragment:
     def __init__(self, parts: Iterable[Piece]) -> None:
         self._parts = parts
@@ -415,140 +577,17 @@ class Fragment:
         return sql
 
     def to_sqlalchemy(self) -> Tuple[str, Dict[str, object]]:
-        return self._to_sqlalchemy(0)
+        return _to_sqlalchemy(self._parts, 0)
 
-    def _to_sqlalchemy(self, start: int) -> Tuple[str, Dict[str, object]]:
-        # Convert to a tuple that can be passed to sqlalchemy's session execute function
-        # using the text() SQL construct and a dictionary of params.
-        params: Dict[str, object] = {}
-        sql: str = ""
 
-        def _paramname(specifier: Specifier) -> str:
-            return f"{str(specifier)[1]}{len(params) + start}"
+class Statement:
+    def __init__(self, parts: Iterable[Piece]) -> None:
+        self._parts = parts
 
-        for part in self._parts:
-            # First, the easy part, just append any raw SQL we have.
-            raw = part.raw()
-            if raw:
-                sql += raw
+    def __repr__(self) -> str:
+        # Just spit out the sqlalchemy raw SQL string for now.
+        sql, _ = self.to_sqlalchemy()
+        return sql
 
-            # Now, the hard part. Create parameter substitutions, respecting column and table rules.
-            specifier = part.specifier()
-            value = part.value()
-            if specifier:
-                if specifier in {Specifier.TABLE, Specifier.COLUMN}:
-                    # Just output it escaped. We already validated the argument to ensure it was
-                    # only containing alphanumeric or safe characters.
-                    sql += f"`{value}`"
-
-                elif specifier == Specifier.COLUMN_LIST:
-                    # Output each escaped. We already verified it was a list and contained alphanumeric
-                    # or safe characters only.
-                    if isinstance(value, list):
-                        sql += ",".join(f"`{v}`" for v in value)
-                    else:
-                        raise FragmentException(f"Logic error, expected list type for {specifier}!")
-
-                elif specifier == Specifier.VALUE:
-                    # Just use sqlalchemy's support for named parameters.
-                    param = _paramname(specifier)
-                    sql += f":{param}"
-                    params[param] = value
-
-                elif specifier == Specifier.VALUE_LIST:
-                    if isinstance(value, list):
-                        if not value:
-                            raise FragmentException(f"Logic error, expected non-zero list length for {specifier}!")
-                        else:
-                            # Just use sqlalchemy's support for named parameters. Manually unroll, however,
-                            # because we want to match column list.
-                            sqlstrs: List[str] = []
-
-                            for v in value:
-                                param = _paramname(specifier)
-                                sqlstrs.append(f":{param}")
-                                params[param] = v
-
-                            sql += ",".join(sqlstrs)
-
-                    else:
-                        raise FragmentException("Logic error, expected list type for {specifier}!")
-
-                elif specifier == Specifier.IN_LIST:
-                    if isinstance(value, list):
-                        if not value:
-                            # Logical consistency, ensure we select nothing.
-                            sql += "NULL"
-                        else:
-                            # Just use sqlalchemy's support for named parameters.
-                            param = _paramname(specifier)
-                            sql += f":{param}"
-                            params[param] = value
-
-                    else:
-                        raise FragmentException("Logic error, expected list type for {specifier}!")
-
-                elif specifier in {Specifier.FRAGMENT, Specifier.STATEMENT}:
-                    if isinstance(value, Fragment):
-                        # Convert the fragment itself.
-                        subsql, subparams = value._to_sqlalchemy(len(params))
-                        sql += subsql
-                        params = {
-                            **params,
-                            **subparams,
-                        }
-
-                        if specifier == Specifier.STATEMENT:
-                            sql += ";"
-
-                    else:
-                        raise FragmentException("Logic error, expected Fragment type for {specifier}!")
-
-                elif specifier in {Specifier.FRAGMENT_LIST, Specifier.STATEMENT_LIST, Specifier.AND_LIST, Specifier.OR_LIST}:
-                    if isinstance(value, list):
-                        sqls: List[str] = []
-
-                        # First get all the parameters and the raw sql pieces.
-                        for chunk in value:
-                            if isinstance(value, Fragment):
-                                # Convert the fragment itself.
-                                subsql, subparams = value._to_sqlalchemy(len(params))
-
-                                if specifier in {Specifier.AND_LIST, Specifier.OR_LIST}:
-                                    # Make sure that sub-filters are evaluated in correct logical order.
-                                    sqls.append(f"({subsql})")
-                                elif specifier == Specifier.STATEMENT_LIST:
-                                    # Make sure all entries, including the last, has a semicolon on it.
-                                    sqls.append("{subsql};")
-                                else:
-                                    sqls.append(subsql)
-
-                                params = {
-                                    **params,
-                                    **subparams,
-                                }
-
-                            else:
-                                raise FragmentException("Logic error, expected Fragment type for {specifier} item!")
-
-                        # Now, stick 'em all together and put the raw text in the output.
-                        if sqls:
-                            concat = {
-                                Specifier.FRAGMENT_LIST: " ",
-                                Specifier.STATEMENT_LIST: " ",
-                                Specifier.AND_LIST: " AND ",
-                                Specifier.OR_LIST: " OR ",
-                            }[specifier]
-                            sql += concat.join(sqls)
-                        else:
-                            if specifier == Specifier.AND_LIST:
-                                # A list of no and statements should mean logically that all things
-                                # should be let through.
-                                sql += " TRUE "
-                            elif specifier == Specifier.OR_LIST:
-                                sql += " FALSE "
-
-                    else:
-                        raise FragmentException("Logic error, expected list type for {specifier}!")
-
-        return (sql, params)
+    def to_sqlalchemy(self) -> Tuple[str, Dict[str, object]]:
+        return _to_sqlalchemy(self._parts, 0)
