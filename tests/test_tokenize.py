@@ -92,6 +92,47 @@ class TestTokenize:
             Token.raw(")", 12),
         ]
 
+    def test_abbreviations(self) -> None:
+        # Beginning.
+        tokens = _tokenize("%v SOME SQL")
+        assert tokens == [Token.specifier("%value", 0), Token.raw(" SOME SQL", 2)]
+
+        # Middle.
+        tokens = _tokenize("SOME SQL %v SOME SQL")
+        assert tokens == [
+            Token.raw("SOME SQL ", 0),
+            Token.specifier("%value", 9),
+            Token.raw(" SOME SQL", 11),
+        ]
+
+        # End.
+        tokens = _tokenize("SOME SQL %v")
+        assert tokens == [Token.raw("SOME SQL ", 0), Token.specifier("%value", 9)]
+
+        # By itself.
+        tokens = _tokenize("%v")
+        assert tokens == [Token.specifier("%value", 0)]
+
+        # Beginning.
+        tokens = _tokenize("%v:name SOME SQL")
+        assert tokens == [Token.specifier("%value:name", 0), Token.raw(" SOME SQL", 7)]
+
+        # Middle.
+        tokens = _tokenize("SOME SQL %v:name SOME SQL")
+        assert tokens == [
+            Token.raw("SOME SQL ", 0),
+            Token.specifier("%value:name", 9),
+            Token.raw(" SOME SQL", 16),
+        ]
+
+        # End.
+        tokens = _tokenize("SOME SQL %v:name")
+        assert tokens == [Token.raw("SOME SQL ", 0), Token.specifier("%value:name", 9)]
+
+        # By itself.
+        tokens = _tokenize("%v:name")
+        assert tokens == [Token.specifier("%v:name", 0)]
+
     def test_invalid_specifier(self) -> None:
         # Not one of our valid specifiers.
         with pytest.raises(

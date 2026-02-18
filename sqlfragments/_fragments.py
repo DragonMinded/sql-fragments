@@ -105,6 +105,20 @@ class Token:
 
         # Double check that the specifier is valid.
         specifier = specifier.lower()
+        specifier = {
+            "%t": "%table",
+            "%c": "%column",
+            "%cl": "%columnlist",
+            "%v": "%value",
+            "%vl": "%valuelist",
+            "%f": "%fragment",
+            "%fl": "%fragmentlist",
+            "%s": "%statement",
+            "%sl": "%statementlist",
+            "%al": "%andlist",
+            "%ol": "%orlist",
+            "%il": "%inlist",
+        }.get(specifier, specifier)
         if specifier not in Specifier:
             raise InvalidSpecifier(
                 f"Unexpected specifier {specifier!r} encountered in position {idx + 1} of fragment!"
