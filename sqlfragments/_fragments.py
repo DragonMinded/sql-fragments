@@ -585,10 +585,16 @@ def _to_sqlalchemy(parts: Iterable[Piece], start: int) -> Tuple[str, Dict[str, o
                         # Logical consistency, ensure we select nothing.
                         sql += "NULL"
                     else:
-                        # Just use sqlalchemy's support for named parameters.
-                        param = _paramname(specifier, value)
-                        sql += f":{param}"
-                        params[param] = value
+                        # Just use sqlalchemy's support for named parameters. Manually unroll, however,
+                        # because sqlalchemy's sqlite driver does not support list types.
+                        instrs: List[str] = []
+
+                        for v in value:
+                            param = _paramname(specifier, v)
+                            instrs.append(f":{param}")
+                            params[param] = v
+
+                        sql += ",".join(instrs)
 
                 else:
                     raise FragmentException(

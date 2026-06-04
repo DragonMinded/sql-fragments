@@ -1,5 +1,3 @@
-from typing import Sequence, cast
-
 from sqlfragments._fragments import fragment, statement
 
 
@@ -216,16 +214,16 @@ class TestSQLAlchemy:
         sql, params = statement(
             "SELECT * FROM table WHERE x IN (%inlist)", [1, 2, 3]
         ).to_sqlalchemy()
-        assert sql == "SELECT * FROM table WHERE x IN (:i0)"
-        assert params == {"i0": [1, 2, 3]}
+        assert sql == "SELECT * FROM table WHERE x IN (:i0,:i1,:i2)"
+        assert params == {"i0": 1, "i1": 2, "i2": 3}
 
         sql, params = statement(
             "SELECT * FROM table WHERE x IN (%inlist)", {1, 2, 3}
         ).to_sqlalchemy()
-        assert sql == "SELECT * FROM table WHERE x IN (:i0)"
-        assert len(params) == 1
-        assert isinstance(params.get("i0"), list)
-        assert set(cast(Sequence[object], params.get("i0"))) == {1, 2, 3}
+        assert sql == "SELECT * FROM table WHERE x IN (:i0,:i1,:i2)"
+        assert len(params) == 3
+        assert params.keys() == {"i0", "i1", "i2"}
+        assert set(params.values()) == {1, 2, 3}
 
         sql, params = statement(
             "SELECT * FROM table WHERE x IN (%inlist)", []
