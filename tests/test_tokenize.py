@@ -73,6 +73,10 @@ class TestTokenize:
         tokens = _tokenize("%value:name")
         assert tokens == [Token.specifier("%value:name", 0)]
 
+        # With underscores.
+        tokens = _tokenize("%value:name_with_underscores")
+        assert tokens == [Token.specifier("%value:name_with_underscores", 0)]
+
         # Different capitalization
         tokens = _tokenize("%ColumnList:name")
         assert tokens == [Token.specifier("%columnlist:name", 0)]

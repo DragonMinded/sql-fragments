@@ -216,7 +216,7 @@ def _tokenize(sql: LiteralString) -> List[Token]:
                 tokens.append(Token.specifier(accum, idx - len(accum)))
                 accum = "%"
                 state = TokenState.SPECIFIER_VALUE
-            elif c.isalnum():
+            elif c.isalnum() or c == "_":
                 # This is a continuation of the specifier.
                 accum += c
             else:
